@@ -327,6 +327,7 @@ EOF
 
   cp -f "$0" "${MANAGER}"
   chmod 700 "${MANAGER}"
+  ln -sfn "${MANAGER}" /usr/local/bin/menu
 
   cat > /etc/cron.d/vless-expiry <<EOF
 15 0 * * * root ${MANAGER} purge >/dev/null 2>&1
@@ -345,7 +346,8 @@ EOF
   ufw --force enable >/dev/null
 
   echo -e "${green}Pemasangan TLS berjaya.${reset}"
-  echo "Jalankan menu menggunakan: vless-manager"
+  echo "Jalankan menu menggunakan: menu"
+  echo "Atau gunakan: vless-manager"
   add_user
 }
 

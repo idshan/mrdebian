@@ -48,6 +48,7 @@ rebuild_xray() {
   load_env
   local clients='[]'
   local name uuid expires
+  local config_tmp="${XRAY_CONFIG%.json}.new.json"
 
   touch "${DB_FILE}"
   while IFS=$'\t' read -r name uuid expires; do
@@ -86,10 +87,10 @@ rebuild_xray() {
         {tag: "direct", protocol: "freedom"},
         {tag: "blocked", protocol: "blackhole"}
       ]
-    }' > "${XRAY_CONFIG}.new"
+    }' > "${config_tmp}"
 
-  xray run -test -config "${XRAY_CONFIG}.new"
-  mv "${XRAY_CONFIG}.new" "${XRAY_CONFIG}"
+  xray run -test -config "${config_tmp}"
+  mv "${config_tmp}" "${XRAY_CONFIG}"
   systemctl restart xray
 }
 

@@ -1,27 +1,10 @@
 # mrdebian
 
-Autoscript pemasangan **VLESS WebSocket TLS** untuk VPS Debian/Ubuntu yang masih kosong. Skrip memasang Xray-core, Nginx, sijil Let's Encrypt dan menu pengurusan pengguna.
+Autoscript pemasangan dan pengurusan **VLESS WebSocket TLS** untuk VPS Debian/Ubuntu yang masih kosong. Skrip memasang Xray-core, Nginx, sijil SSL Let's Encrypt, firewall dan menu pengurusan akaun.
 
-## Fungsi
+## Pemasangan pantas
 
-- Pemasangan VLESS WebSocket dengan TLS
-- Sijil SSL Let's Encrypt
-- Tambah pengguna dengan tempoh akaun dalam hari
-- Padam dan senaraikan pengguna
-- Paparkan semula pautan VLESS
-- Padam akaun tamat tempoh secara automatik
-- Restart Xray dan Nginx melalui menu
-- Firewall UFW untuk SSH, HTTP dan HTTPS
-
-## Keperluan
-
-- VPS kosong dengan Ubuntu 22.04/24.04 atau Debian 11/12
-- Akses root
-- Domain yang rekod DNS A-nya sudah menunjuk ke IP VPS
-- Port 22, 80 dan 443 boleh digunakan
-- Jika menggunakan Cloudflare, matikan proxy sementara ketika sijil TLS dikeluarkan
-
-## Pemasangan
+Jalankan sebagai `root` pada VPS kosong:
 
 ```bash
 apt update && apt install -y wget
@@ -30,18 +13,56 @@ chmod +x install.sh
 bash install.sh
 ```
 
-Semasa pemasangan, masukkan domain, email Let's Encrypt, WebSocket path dan address klien/CDN apabila diminta.
+Atau satu baris:
 
-## Buka menu
+```bash
+wget -O install.sh https://raw.githubusercontent.com/idshan/mrdebian/main/install.sh && chmod +x install.sh && bash install.sh
+```
 
-Selepas pemasangan selesai:
+## Keperluan
+
+- VPS kosong dengan Ubuntu 22.04/24.04 atau Debian 11/12
+- Akses `root`
+- Domain atau subdomain sendiri
+- Rekod DNS `A` domain menunjuk ke IP awam VPS
+- Port TCP 22, 80 dan 443 dibuka pada firewall/panel VPS
+- Tiada Nginx, Apache atau Xray penting yang perlu dikekalkan
+
+> Jika menggunakan Cloudflare, gunakan `DNS only` (awan kelabu) semasa Let's Encrypt mengeluarkan sijil. Proxy boleh dihidupkan semula selepas pemasangan berjaya.
+
+## Maklumat yang diminta semasa pemasangan
+
+1. Domain untuk TLS, contohnya `vpn.example.com`
+2. Email Let's Encrypt (boleh dibiarkan kosong)
+3. WebSocket path, lalai `/vless`
+4. Address klien/CDN, lalai menggunakan domain
+5. Pengesahan sebelum perubahan dibuat
+
+Selepas pemasangan, skrip meminta nama pengguna dan tempoh akaun dalam hari, kemudian memaparkan pautan `vless://` untuk diimport ke aplikasi klien.
+
+## Fungsi utama
+
+- VLESS WebSocket dengan TLS pada port 443
+- TLS ditamatkan oleh Nginx
+- Xray hanya mendengar pada `127.0.0.1:10000`
+- Sijil Let's Encrypt dan pembaharuan automatik Certbot
+- UUID berasingan untuk setiap pengguna
+- Tempoh akaun berdasarkan bilangan hari
+- Pembersihan akaun tamat tempoh setiap hari
+- Firewall UFW membuka OpenSSH, port 80 dan 443
+- Halaman web asas sebagai penyamaran pada laluan `/`
+
+## Menu pengurusan
+
+Buka menu selepas pemasangan:
 
 ```bash
 vless-manager
 ```
 
-Menu menyediakan:
+Pilihan menu:
 
+```text
 1. Install server dari kosong
 2. Add user
 3. Delete user
@@ -49,24 +70,54 @@ Menu menyediakan:
 5. Papar link user
 6. Padam akaun tamat tempoh
 7. Restart Xray dan Nginx
+0. Keluar
+```
 
 ## Arahan terus
 
+Menu juga boleh dipanggil tanpa membuka paparan utama:
+
 ```bash
-vless-manager add
-vless-manager delete
-vless-manager list
-vless-manager link
-vless-manager purge
+vless-manager add       # Tambah pengguna dan tetapkan bilangan hari
+vless-manager delete    # Padam pengguna
+vless-manager list      # Senaraikan pengguna dan tarikh tamat
+vless-manager link      # Paparkan semula pautan pengguna
+vless-manager purge     # Padam semua akaun yang telah tamat
 ```
 
-## Lokasi konfigurasi
+## Aplikasi klien
 
-- Data pengguna: `/etc/vless-ws/users.tsv`
-- Tetapan server: `/etc/vless-ws/server.env`
-- Konfigurasi Xray: `/usr/local/etc/xray/config.json`
-- Konfigurasi Nginx: `/etc/nginx/sites-available/vless-ws`
+Pautan VLESS boleh diimport ke aplikasi yang menyokong VLESS WebSocket TLS, contohnya:
+
+- v2rayNG
+- Hiddify
+- NekoBox
+- Shadowrocket
+
+Tetapan yang dihasilkan menggunakan `security=tls`, `type=ws`, domain sebagai SNI/WS Host dan path yang dipilih semasa pemasangan.
+
+## Lokasi fail penting
+
+| Kegunaan | Lokasi |
+|---|---|
+| Database pengguna | `/etc/vless-ws/users.tsv` |
+| Tetapan domain/server | `/etc/vless-ws/server.env` |
+| Konfigurasi Xray | `/usr/local/etc/xray/config.json` |
+| Konfigurasi Nginx | `/etc/nginx/sites-available/vless-ws` |
+| Program menu | `/usr/local/sbin/vless-manager` |
+| Jadual pembersihan akaun | `/etc/cron.d/vless-expiry` |
+
+## Pemeriksaan servis
+
+```bash
+systemctl status xray --no-pager
+systemctl status nginx --no-pager
+nginx -t
+certbot certificates
+```
+
+Jika sijil gagal dikeluarkan, pastikan domain sudah menunjuk ke IP VPS, port 80 boleh dicapai dan proxy Cloudflare dimatikan sementara.
 
 ## Perhatian
 
-Skrip ini direka untuk VPS kosong dan boleh menggantikan konfigurasi Nginx/Xray sedia ada. Gunakan hanya pada server milik sendiri atau server yang anda dibenarkan urus.
+Skrip ini direka untuk **VPS kosong**. Ia boleh menggantikan konfigurasi Nginx dan Xray sedia ada. Gunakan hanya pada server milik sendiri atau server yang anda dibenarkan urus. Simpan pautan dan UUID pengguna dengan selamat.

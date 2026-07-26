@@ -63,13 +63,14 @@ vless-manager
 Pilihan menu:
 
 ```text
-1. Install server dari kosong
-2. Add user
-3. Delete user
-4. List user
-5. Papar link user
-6. Padam akaun tamat tempoh
-7. Restart Xray dan Nginx
+Selepas pemasangan:
+
+1. Add User
+2. Delete User
+3. List User
+4. Papar Link User
+5. Padam Akaun Tamat Tempoh
+6. Restart Service
 0. Keluar
 ```
 

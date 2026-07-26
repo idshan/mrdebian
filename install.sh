@@ -120,12 +120,25 @@ add_user() {
   printf '%s\t%s\t%s\n' "${name}" "${uuid}" "${expiry}" >> "${DB_FILE}"
 
   rebuild_xray
-  echo -e "${green}Pengguna berjaya ditambah.${reset}"
-  echo "Nama   : ${name}"
-  echo "Tamat  : ${expiry}"
-  echo "UUID   : ${uuid}"
-  echo "Link   :"
+  echo
+  echo -e "${green}======================================${reset}"
+  echo -e "${green} CONFIG VLESS WS TLS${reset}"
+  echo -e "${green}======================================${reset}"
+  echo "Nama       : ${name}"
+  echo "Address    : ${CLIENT_ADDRESS}"
+  echo "Port       : 443"
+  echo "UUID       : ${uuid}"
+  echo "Encryption : none"
+  echo "Network    : ws"
+  echo "WS Host    : ${DOMAIN}"
+  echo "WS Path    : ${WS_PATH}"
+  echo "TLS        : tls"
+  echo "SNI        : ${DOMAIN}"
+  echo "Tamat      : ${expiry}"
+  echo "======================================"
+  echo "Link Import:"
   make_link "${uuid}" "${name}"
+  echo "======================================"
 }
 
 delete_user() {
@@ -185,8 +198,22 @@ show_user_link() {
   row="$(awk -F '\t' -v target="${name}" '$1 == target {print; exit}' "${DB_FILE}")"
   [[ -n "${row}" ]] || die "Pengguna tidak ditemui."
   IFS=$'\t' read -r name uuid expiry <<<"${row}"
-  echo "Tamat: ${expiry}"
+  echo "======================================"
+  echo "Nama       : ${name}"
+  echo "Address    : ${CLIENT_ADDRESS}"
+  echo "Port       : 443"
+  echo "UUID       : ${uuid}"
+  echo "Encryption : none"
+  echo "Network    : ws"
+  echo "WS Host    : ${DOMAIN}"
+  echo "WS Path    : ${WS_PATH}"
+  echo "TLS        : tls"
+  echo "SNI        : ${DOMAIN}"
+  echo "Tamat      : ${expiry}"
+  echo "======================================"
+  echo "Link Import:"
   make_link "${uuid}" "${name}"
+  echo "======================================"
 }
 
 install_server() {

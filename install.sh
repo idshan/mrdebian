@@ -357,31 +357,42 @@ menu() {
     echo "======================================"
     echo " VLESS WebSocket TLS Manager"
     echo "======================================"
-    echo " 1. Install server dari kosong"
-    echo " 2. Add user"
-    echo " 3. Delete user"
-    echo " 4. List user"
-    echo " 5. Papar link user"
-    echo " 6. Padam akaun tamat tempoh"
-    echo " 7. Restart Xray dan Nginx"
-    echo " 0. Keluar"
+    if [[ ! -f "${ENV_FILE}" ]]; then
+      echo " 1. Install server dari kosong"
+      echo " 0. Keluar"
+    else
+      echo " 1. Add User"
+      echo " 2. Delete User"
+      echo " 3. List User"
+      echo " 4. Papar Link User"
+      echo " 5. Padam Akaun Tamat Tempoh"
+      echo " 6. Restart Service"
+      echo " 0. Keluar"
+    fi
     echo "======================================"
     read -r -p "Pilihan: " choice
 
-    case "${choice}" in
-      1) install_server ;;
-      2) add_user ;;
-      3) delete_user ;;
-      4) list_users ;;
-      5) show_user_link ;;
-      6) purge_expired; echo "Pembersihan selesai." ;;
-      7)
-        systemctl restart xray nginx
-        echo "Servis telah dimulakan semula."
-        ;;
-      0) exit 0 ;;
-      *) echo "Pilihan tidak sah." ;;
-    esac
+    if [[ ! -f "${ENV_FILE}" ]]; then
+      case "${choice}" in
+        1) install_server ;;
+        0) exit 0 ;;
+        *) echo "Pilihan tidak sah." ;;
+      esac
+    else
+      case "${choice}" in
+        1) add_user ;;
+        2) delete_user ;;
+        3) list_users ;;
+        4) show_user_link ;;
+        5) purge_expired; echo "Pembersihan selesai." ;;
+        6)
+          systemctl restart xray nginx
+          echo "Servis telah dimulakan semula."
+          ;;
+        0) exit 0 ;;
+        *) echo "Pilihan tidak sah." ;;
+      esac
+    fi
     read -r -p "Tekan Enter untuk kembali ke menu..." _
   done
 }

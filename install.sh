@@ -54,7 +54,7 @@ install_xray() {
   fi
 }
 
-collect_usage() {
+collect_usage() (
   load_env
   local raw delta merged
   install -d -m 700 "${APP_DIR}"
@@ -68,19 +68,19 @@ collect_usage() {
   [[ -n "${raw}" ]] || return 0
   delta="$(mktemp)"
   merged="$(mktemp)"
-  awk -F '"' '
-    /"name":[[:space:]]*"user>>>/ { split($4, p, ">>>"); user=p[2]; next }
-    /"value":[[:space:]]*[0-9]+/ && user != "" {
-      value=$0; sub(/^.*"value":[[:space:]]*/, "", value); sub(/[^0-9].*$/, "", value)
-      used[user]+=value; user=""
-    }
-    END { for (u in used) print u "\t" used[u] }
+  jq -r '
+    reduce (.stat[]? | select(.name | startswith("user>>>"))) as $stat
+      ({};
+        .[($stat.name | split(">>>")[1])] += ($stat.value // 0)
+      )
+    | to_entries[]
+    | "\(.key)\t\(.value)"
   ' <<<"${raw}" > "${delta}"
   awk -F '\t' '{ total[$1]+=$2 } END { for (u in total) print u "\t" total[u] }' \
     "${USAGE_FILE}" "${delta}" > "${merged}"
   install -m 600 "${merged}" "${USAGE_FILE}"
   rm -f "${delta}" "${merged}"
-}
+)
 
 format_bytes() {
   awk -v bytes="${1:-0}" 'BEGIN {

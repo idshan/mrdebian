@@ -274,16 +274,22 @@ add_user() {
   echo "SNI        : ${DOMAIN}"
   echo "Tamat      : ${expiry}"
   echo "======================================"
-  echo "Link Import WS:"
+  echo
+  echo "---------- WS TLS ----------"
   make_link "${uuid}" "${name}"
-  echo "Link Import XHTTP:"
+  echo
+  echo "---------- XHTTP TLS ----------"
   make_xhttp_link "${uuid}" "${name}"
-  echo "Link Import WS non-TLS:"
+  echo
+  echo "---------- WS NON-TLS ----------"
   make_ws_ntls_link "${uuid}" "${name}"
-  echo "Link Import HTTPUpgrade TLS:"
+  echo
+  echo "---------- HTTPUPGRADE TLS ----------"
   make_hup_link "${uuid}" "${name}"
-  echo "Link Import XHTTP non-TLS:"
+  echo
+  echo "---------- XHTTP NON-TLS ----------"
   make_xhttp_ntls_link "${uuid}" "${name}"
+  echo
   echo "======================================"
 }
 
@@ -368,16 +374,22 @@ show_user_link() {
   echo "SNI        : ${DOMAIN}"
   echo "Tamat      : ${expiry}"
   echo "======================================"
-  echo "Link Import WS:"
+  echo
+  echo "---------- WS TLS ----------"
   make_link "${uuid}" "${name}"
-  echo "Link Import XHTTP:"
+  echo
+  echo "---------- XHTTP TLS ----------"
   make_xhttp_link "${uuid}" "${name}"
-  echo "Link Import WS non-TLS:"
+  echo
+  echo "---------- WS NON-TLS ----------"
   make_ws_ntls_link "${uuid}" "${name}"
-  echo "Link Import HTTPUpgrade TLS:"
+  echo
+  echo "---------- HTTPUPGRADE TLS ----------"
   make_hup_link "${uuid}" "${name}"
-  echo "Link Import XHTTP non-TLS:"
+  echo
+  echo "---------- XHTTP NON-TLS ----------"
   make_xhttp_ntls_link "${uuid}" "${name}"
+  echo
   echo "======================================"
 }
 

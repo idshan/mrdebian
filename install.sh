@@ -356,7 +356,7 @@ purge_expired() {
 
 show_user_link() {
   load_env
-  local name row uuid expiry
+  local name row uuid expiry link_choice
   read -r -p "Nama pengguna: " name
   row="$(awk -F '\t' -v target="${name}" '$1 == target {print; exit}' "${DB_FILE}")"
   [[ -n "${row}" ]] || die "Pengguna tidak ditemui."
@@ -375,20 +375,26 @@ show_user_link() {
   echo "Tamat      : ${expiry}"
   echo "======================================"
   echo
-  echo "---------- WS TLS ----------"
-  make_link "${uuid}" "${name}"
+  echo "Pilih link yang mahu disalin:"
+  echo " 1. WS TLS"
+  echo " 2. XHTTP TLS"
+  echo " 3. WS non-TLS"
+  echo " 4. HTTPUpgrade TLS"
+  echo " 5. XHTTP non-TLS"
+  read -r -p "Pilihan: " link_choice
   echo
-  echo "---------- XHTTP TLS ----------"
-  make_xhttp_link "${uuid}" "${name}"
+  echo "========== SALIN LINK DI BAWAH =========="
   echo
-  echo "---------- WS NON-TLS ----------"
-  make_ws_ntls_link "${uuid}" "${name}"
+  case "${link_choice}" in
+    1) make_link "${uuid}" "${name}" ;;
+    2) make_xhttp_link "${uuid}" "${name}" ;;
+    3) make_ws_ntls_link "${uuid}" "${name}" ;;
+    4) make_hup_link "${uuid}" "${name}" ;;
+    5) make_xhttp_ntls_link "${uuid}" "${name}" ;;
+    *) die "Pilihan link tidak sah." ;;
+  esac
   echo
-  echo "---------- HTTPUPGRADE TLS ----------"
-  make_hup_link "${uuid}" "${name}"
-  echo
-  echo "---------- XHTTP NON-TLS ----------"
-  make_xhttp_ntls_link "${uuid}" "${name}"
+  echo "========== TAMAT LINK =========="
   echo
   echo "======================================"
 }

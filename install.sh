@@ -168,8 +168,8 @@ list_users() {
       true
   )"
 
-  printf '%-20s %-38s %-12s %s\n' "NAMA" "UUID" "TAMAT" "STATUS"
-  printf '%-20s %-38s %-12s %s\n' "----" "----" "-----" "------"
+  printf '%-20s %-12s %s\n' "NAMA" "STATUS" "TAMAT"
+  printf '%-20s %-12s %s\n' "----" "------" "-----"
   while IFS=$'\t' read -r name uuid expiry; do
     [[ -n "${name}" ]] || continue
     if [[ "${expiry}" < "${today}" ]]; then
@@ -179,8 +179,7 @@ list_users() {
     else
       status="Offline"
     fi
-    printf '%-20s %-38s %-12s %s\n' \
-      "${name}" "${uuid}" "${expiry}" "${status}"
+    printf '%-20s %-12s %s\n' "${name}" "${status}" "${expiry}"
   done < "${DB_FILE}"
 }
 

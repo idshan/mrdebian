@@ -13,6 +13,7 @@ MANAGER="/usr/local/sbin/vless-manager"
 NGINX_SITE="/etc/nginx/sites-available/vless-ws"
 WEBROOT="/var/www/vless-ws"
 XRAY_PORT=10000
+XHTTP_PORT=10001
 XRAY_API_PORT=10085
 
 red='\033[0;31m'
@@ -37,6 +38,7 @@ load_env() {
   [[ -r "${ENV_FILE}" ]] || die "Server belum dipasang. Pilih Install."
   # shellcheck disable=SC1090
   . "${ENV_FILE}"
+  XHTTP_PATH="${XHTTP_PATH:-${WS_PATH}-xhttp}"
 }
 
 install_xray() {
@@ -106,7 +108,9 @@ rebuild_xray() {
   jq -n \
     --argjson clients "${clients}" \
     --arg path "${WS_PATH}" \
+    --arg xhttp_path "${XHTTP_PATH}" \
     --argjson port "${XRAY_PORT}" \
+    --argjson xhttp_port "${XHTTP_PORT}" \
     --argjson api_port "${XRAY_API_PORT}" \
     '{
       log: {loglevel: "warning"},
@@ -126,6 +130,20 @@ rebuild_xray() {
           network: "ws",
           security: "none",
           wsSettings: {path: $path}
+        }
+      }, {
+        tag: "vless-xhttp",
+        listen: "127.0.0.1",
+        port: $xhttp_port,
+        protocol: "vless",
+        settings: {
+          clients: $clients,
+          decryption: "none"
+        },
+        streamSettings: {
+          network: "xhttp",
+          security: "none",
+          xhttpSettings: {path: $xhttp_path, mode: "auto"}
         }
       }, {
         tag: "api-in",
@@ -152,6 +170,14 @@ make_link() {
   local encoded_path="${WS_PATH//\//%2F}"
   printf '%s\n' \
     "vless://${uuid}@${CLIENT_ADDRESS}:443?encryption=none&security=tls&sni=${DOMAIN}&type=ws&host=${DOMAIN}&path=${encoded_path}#${name}"
+}
+
+make_xhttp_link() {
+  local uuid="$1"
+  local name="$2"
+  local encoded_path="${XHTTP_PATH//\//%2F}"
+  printf '%s\n' \
+    "vless://${uuid}@${CLIENT_ADDRESS}:443?encryption=none&security=tls&sni=${DOMAIN}&alpn=h2%2Chttp%2F1.1&type=xhttp&host=${DOMAIN}&path=${encoded_path}&mode=packet-up#${name}-XHTTP"
 }
 
 add_user() {
@@ -189,8 +215,10 @@ add_user() {
   echo "SNI        : ${DOMAIN}"
   echo "Tamat      : ${expiry}"
   echo "======================================"
-  echo "Link Import:"
+  echo "Link Import WS:"
   make_link "${uuid}" "${name}"
+  echo "Link Import XHTTP:"
+  make_xhttp_link "${uuid}" "${name}"
   echo "======================================"
 }
 
@@ -275,8 +303,10 @@ show_user_link() {
   echo "SNI        : ${DOMAIN}"
   echo "Tamat      : ${expiry}"
   echo "======================================"
-  echo "Link Import:"
+  echo "Link Import WS:"
   make_link "${uuid}" "${name}"
+  echo "Link Import XHTTP:"
+  make_xhttp_link "${uuid}" "${name}"
   echo "======================================"
 }
 
@@ -323,6 +353,7 @@ DOMAIN='${DOMAIN}'
 CLIENT_ADDRESS='${CLIENT_ADDRESS}'
 WS_PATH='${WS_PATH}'
 XRAY_PORT='${XRAY_PORT}'
+XHTTP_PATH='${WS_PATH}-xhttp'
 EOF
   chmod 600 "${ENV_FILE}"
 
@@ -412,6 +443,18 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
         proxy_pass http://127.0.0.1:${XRAY_PORT};
+    }
+
+    location ^~ ${WS_PATH}-xhttp {
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${XHTTP_PORT};
     }
 }
 EOF

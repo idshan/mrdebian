@@ -161,15 +161,24 @@ delete_user() {
 
 list_users() {
   load_env
-  local today name uuid expiry status
+  local today name uuid expiry status recent_activity
   today="$(date -u +%Y-%m-%d)"
+  recent_activity="$(
+    journalctl -u xray --since "2 minutes ago" --no-pager -o cat 2>/dev/null ||
+      true
+  )"
 
   printf '%-20s %-38s %-12s %s\n' "NAMA" "UUID" "TAMAT" "STATUS"
   printf '%-20s %-38s %-12s %s\n' "----" "----" "-----" "------"
   while IFS=$'\t' read -r name uuid expiry; do
     [[ -n "${name}" ]] || continue
-    status="Aktif"
-    [[ "${expiry}" < "${today}" ]] && status="Tamat"
+    if [[ "${expiry}" < "${today}" ]]; then
+      status="Tamat"
+    elif grep -Fq "email: ${name}" <<<"${recent_activity}"; then
+      status="Online"
+    else
+      status="Offline"
+    fi
     printf '%-20s %-38s %-12s %s\n' \
       "${name}" "${uuid}" "${expiry}" "${status}"
   done < "${DB_FILE}"

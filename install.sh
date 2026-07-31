@@ -14,6 +14,9 @@ NGINX_SITE="/etc/nginx/sites-available/vless-ws"
 WEBROOT="/var/www/vless-ws"
 XRAY_PORT=10000
 XHTTP_PORT=10001
+WS_NTLS_PORT=10002
+HUP_PORT=10003
+XHTTP_NTLS_PORT=10004
 XRAY_API_PORT=10085
 
 red='\033[0;31m'
@@ -39,6 +42,9 @@ load_env() {
   # shellcheck disable=SC1090
   . "${ENV_FILE}"
   XHTTP_PATH="${XHTTP_PATH:-${WS_PATH}-xhttp}"
+  WS_NTLS_PATH="${WS_NTLS_PATH:-${WS_PATH}-ntls}"
+  HUP_PATH="${HUP_PATH:-${WS_PATH}-hup}"
+  XHTTP_NTLS_PATH="${XHTTP_NTLS_PATH:-${WS_PATH}-xhttp-ntls}"
 }
 
 install_xray() {
@@ -109,8 +115,14 @@ rebuild_xray() {
     --argjson clients "${clients}" \
     --arg path "${WS_PATH}" \
     --arg xhttp_path "${XHTTP_PATH}" \
+    --arg ws_ntls_path "${WS_NTLS_PATH}" \
+    --arg hup_path "${HUP_PATH}" \
+    --arg xhttp_ntls_path "${XHTTP_NTLS_PATH}" \
     --argjson port "${XRAY_PORT}" \
     --argjson xhttp_port "${XHTTP_PORT}" \
+    --argjson ws_ntls_port "${WS_NTLS_PORT}" \
+    --argjson hup_port "${HUP_PORT}" \
+    --argjson xhttp_ntls_port "${XHTTP_NTLS_PORT}" \
     --argjson api_port "${XRAY_API_PORT}" \
     '{
       log: {loglevel: "warning"},
@@ -146,6 +158,35 @@ rebuild_xray() {
           xhttpSettings: {path: $xhttp_path, mode: "auto"}
         }
       }, {
+        tag: "vless-ws-ntls",
+        listen: "127.0.0.1",
+        port: $ws_ntls_port,
+        protocol: "vless",
+        settings: {clients: $clients, decryption: "none"},
+        streamSettings: {
+          network: "ws", security: "none", wsSettings: {path: $ws_ntls_path}
+        }
+      }, {
+        tag: "vless-httpupgrade",
+        listen: "127.0.0.1",
+        port: $hup_port,
+        protocol: "vless",
+        settings: {clients: $clients, decryption: "none"},
+        streamSettings: {
+          network: "httpupgrade", security: "none",
+          httpupgradeSettings: {path: $hup_path}
+        }
+      }, {
+        tag: "vless-xhttp-ntls",
+        listen: "127.0.0.1",
+        port: $xhttp_ntls_port,
+        protocol: "vless",
+        settings: {clients: $clients, decryption: "none"},
+        streamSettings: {
+          network: "xhttp", security: "none",
+          xhttpSettings: {path: $xhttp_ntls_path, mode: "auto"}
+        }
+      }, {
         tag: "api-in",
         listen: "127.0.0.1",
         port: $api_port,
@@ -178,6 +219,24 @@ make_xhttp_link() {
   local encoded_path="${XHTTP_PATH//\//%2F}"
   printf '%s\n' \
     "vless://${uuid}@${CLIENT_ADDRESS}:443?encryption=none&security=tls&sni=${DOMAIN}&alpn=h2%2Chttp%2F1.1&type=xhttp&host=${DOMAIN}&path=${encoded_path}&mode=packet-up#${name}-XHTTP"
+}
+
+make_ws_ntls_link() {
+  local uuid="$1" name="$2" encoded_path="${WS_NTLS_PATH//\//%2F}"
+  printf '%s\n' \
+    "vless://${uuid}@${CLIENT_ADDRESS}:80?encryption=none&security=none&type=ws&host=${DOMAIN}&path=${encoded_path}#${name}-WS-NTLS"
+}
+
+make_hup_link() {
+  local uuid="$1" name="$2" encoded_path="${HUP_PATH//\//%2F}"
+  printf '%s\n' \
+    "vless://${uuid}@${CLIENT_ADDRESS}:443?encryption=none&security=tls&sni=${DOMAIN}&type=httpupgrade&host=${DOMAIN}&path=${encoded_path}#${name}-HUP"
+}
+
+make_xhttp_ntls_link() {
+  local uuid="$1" name="$2" encoded_path="${XHTTP_NTLS_PATH//\//%2F}"
+  printf '%s\n' \
+    "vless://${uuid}@${CLIENT_ADDRESS}:8080?encryption=none&security=none&type=xhttp&host=${DOMAIN}&path=${encoded_path}&mode=packet-up#${name}-XHTTP-NTLS"
 }
 
 add_user() {
@@ -219,6 +278,12 @@ add_user() {
   make_link "${uuid}" "${name}"
   echo "Link Import XHTTP:"
   make_xhttp_link "${uuid}" "${name}"
+  echo "Link Import WS non-TLS:"
+  make_ws_ntls_link "${uuid}" "${name}"
+  echo "Link Import HTTPUpgrade TLS:"
+  make_hup_link "${uuid}" "${name}"
+  echo "Link Import XHTTP non-TLS:"
+  make_xhttp_ntls_link "${uuid}" "${name}"
   echo "======================================"
 }
 
@@ -307,6 +372,12 @@ show_user_link() {
   make_link "${uuid}" "${name}"
   echo "Link Import XHTTP:"
   make_xhttp_link "${uuid}" "${name}"
+  echo "Link Import WS non-TLS:"
+  make_ws_ntls_link "${uuid}" "${name}"
+  echo "Link Import HTTPUpgrade TLS:"
+  make_hup_link "${uuid}" "${name}"
+  echo "Link Import XHTTP non-TLS:"
+  make_xhttp_ntls_link "${uuid}" "${name}"
   echo "======================================"
 }
 
@@ -354,6 +425,9 @@ CLIENT_ADDRESS='${CLIENT_ADDRESS}'
 WS_PATH='${WS_PATH}'
 XRAY_PORT='${XRAY_PORT}'
 XHTTP_PATH='${WS_PATH}-xhttp'
+WS_NTLS_PATH='${WS_PATH}-ntls'
+HUP_PATH='${WS_PATH}-hup'
+XHTTP_NTLS_PATH='${WS_PATH}-xhttp-ntls'
 EOF
   chmod 600 "${ENV_FILE}"
 
@@ -367,6 +441,26 @@ EOF
 
   rm -f /etc/nginx/sites-enabled/default
   cat > "${NGINX_SITE}" <<EOF
+server {
+    listen 8080;
+    listen [::]:8080;
+    server_name ${DOMAIN};
+
+    location ^~ ${WS_PATH}-xhttp-ntls {
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${XHTTP_NTLS_PORT};
+    }
+
+    location / { return 404; }
+}
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -411,9 +505,41 @@ server {
         root ${WEBROOT};
     }
 
+    location = ${WS_PATH}-ntls {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${WS_NTLS_PORT};
+    }
+
     location / {
         return 301 https://\$host\$request_uri;
     }
+}
+
+server {
+    listen 8080;
+    listen [::]:8080;
+    server_name ${DOMAIN};
+
+    location ^~ ${WS_PATH}-xhttp-ntls {
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${XHTTP_NTLS_PORT};
+    }
+
+    location / { return 404; }
 }
 
 server {
@@ -443,6 +569,30 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
         proxy_pass http://127.0.0.1:${XRAY_PORT};
+    }
+
+    location = ${WS_PATH}-ntls {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${WS_NTLS_PORT};
+    }
+
+    location = ${WS_PATH}-hup {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://127.0.0.1:${HUP_PORT};
     }
 
     location ^~ ${WS_PATH}-xhttp {
@@ -478,6 +628,7 @@ EOF
   ufw allow OpenSSH >/dev/null
   ufw allow 80/tcp >/dev/null
   ufw allow 443/tcp >/dev/null
+  ufw allow 8080/tcp >/dev/null
   ufw --force enable >/dev/null
 
   echo -e "${green}Pemasangan TLS berjaya.${reset}"

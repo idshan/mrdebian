@@ -7,11 +7,13 @@ set -Eeuo pipefail
 APP_DIR="/etc/vless-ws"
 DB_FILE="${APP_DIR}/users.tsv"
 ENV_FILE="${APP_DIR}/server.env"
+USAGE_FILE="${APP_DIR}/usage.tsv"
 XRAY_CONFIG="/usr/local/etc/xray/config.json"
 MANAGER="/usr/local/sbin/vless-manager"
 NGINX_SITE="/etc/nginx/sites-available/vless-ws"
 WEBROOT="/var/www/vless-ws"
 XRAY_PORT=10000
+XRAY_API_PORT=10085
 
 red='\033[0;31m'
 green='\033[0;32m'
@@ -44,11 +46,50 @@ install_xray() {
   fi
 }
 
+collect_usage() {
+  load_env
+  local raw delta merged
+  install -d -m 700 "${APP_DIR}"
+  touch "${USAGE_FILE}"
+  command -v flock >/dev/null 2>&1 || return 0
+  exec 9>"${APP_DIR}/usage.lock"
+  flock -n 9 || return 0
+
+  raw="$(xray api statsquery --server="127.0.0.1:${XRAY_API_PORT}" \
+    -pattern 'user>>>' -reset 2>/dev/null || true)"
+  [[ -n "${raw}" ]] || return 0
+  delta="$(mktemp)"
+  merged="$(mktemp)"
+  awk -F '"' '
+    /"name":[[:space:]]*"user>>>/ { split($4, p, ">>>"); user=p[2]; next }
+    /"value":[[:space:]]*[0-9]+/ && user != "" {
+      value=$0; sub(/^.*"value":[[:space:]]*/, "", value); sub(/[^0-9].*$/, "", value)
+      used[user]+=value; user=""
+    }
+    END { for (u in used) print u "\t" used[u] }
+  ' <<<"${raw}" > "${delta}"
+  awk -F '\t' '{ total[$1]+=$2 } END { for (u in total) print u "\t" total[u] }' \
+    "${USAGE_FILE}" "${delta}" > "${merged}"
+  install -m 600 "${merged}" "${USAGE_FILE}"
+  rm -f "${delta}" "${merged}"
+}
+
+format_bytes() {
+  awk -v bytes="${1:-0}" 'BEGIN {
+    split("B KB MB GB TB", unit, " "); n=1
+    while (bytes >= 1024 && n < 5) { bytes/=1024; n++ }
+    if (n == 1) printf "%.0f %s", bytes, unit[n]
+    else printf "%.2f %s", bytes, unit[n]
+  }'
+}
+
 rebuild_xray() {
   load_env
   local clients='[]'
   local name uuid expires
   local config_tmp="${XRAY_CONFIG%.json}.new.json"
+
+  collect_usage || true
 
   touch "${DB_FILE}"
   while IFS=$'\t' read -r name uuid expires; do
@@ -66,8 +107,12 @@ rebuild_xray() {
     --argjson clients "${clients}" \
     --arg path "${WS_PATH}" \
     --argjson port "${XRAY_PORT}" \
+    --argjson api_port "${XRAY_API_PORT}" \
     '{
       log: {loglevel: "warning"},
+      api: {tag: "api", services: ["StatsService"]},
+      stats: {},
+      policy: {levels: {"0": {statsUserUplink: true, statsUserDownlink: true}}},
       inbounds: [{
         tag: "vless-ws",
         listen: "127.0.0.1",
@@ -82,7 +127,14 @@ rebuild_xray() {
           security: "none",
           wsSettings: {path: $path}
         }
+      }, {
+        tag: "api-in",
+        listen: "127.0.0.1",
+        port: $api_port,
+        protocol: "dokodemo-door",
+        settings: {address: "127.0.0.1"}
       }],
+      routing: {rules: [{type: "field", inboundTag: ["api-in"], outboundTag: "api"}]},
       outbounds: [
         {tag: "direct", protocol: "freedom"},
         {tag: "blocked", protocol: "blackhole"}
@@ -161,15 +213,16 @@ delete_user() {
 
 list_users() {
   load_env
-  local today name uuid expiry status recent_activity
+  local today name uuid expiry status recent_activity used used_text
+  collect_usage || true
   today="$(date -u +%Y-%m-%d)"
   recent_activity="$(
     journalctl -u xray --since "2 minutes ago" --no-pager -o cat 2>/dev/null ||
       true
   )"
 
-  printf '%-20s %-12s %s\n' "NAMA" "STATUS" "TAMAT"
-  printf '%-20s %-12s %s\n' "----" "------" "-----"
+  printf '%-20s %-12s %-12s %s\n' "NAMA" "STATUS" "DIGUNA" "TAMAT"
+  printf '%-20s %-12s %-12s %s\n' "----" "------" "------" "-----"
   while IFS=$'\t' read -r name uuid expiry; do
     [[ -n "${name}" ]] || continue
     if [[ "${expiry}" < "${today}" ]]; then
@@ -179,7 +232,9 @@ list_users() {
     else
       status="Offline"
     fi
-    printf '%-20s %-12s %s\n' "${name}" "${status}" "${expiry}"
+    used="$(awk -F '\t' -v user="${name}" '$1 == user {print $2; exit}' "${USAGE_FILE}")"
+    used_text="$(format_bytes "${used:-0}")"
+    printf '%-20s %-12s %-12s %s\n' "${name}" "${status}" "${used_text}" "${expiry}"
   done < "${DB_FILE}"
 }
 
@@ -367,6 +422,7 @@ EOF
 
   cat > /etc/cron.d/vless-expiry <<EOF
 15 0 * * * root ${MANAGER} purge >/dev/null 2>&1
+* * * * * root ${MANAGER} collect >/dev/null 2>&1
 EOF
   chmod 644 /etc/cron.d/vless-expiry
 
@@ -422,6 +478,7 @@ menu() {
         4) show_user_link ;;
         5) purge_expired; echo "Pembersihan selesai." ;;
         6)
+          collect_usage || true
           systemctl restart xray nginx
           echo "Servis telah dimulakan semula."
           ;;
@@ -441,6 +498,8 @@ case "${1:-menu}" in
   list) list_users ;;
   link) show_user_link ;;
   purge) purge_expired ;;
+  collect) collect_usage ;;
+  rebuild) rebuild_xray ;;
   menu) menu ;;
-  *) die "Arahan: $0 [install|add|delete|list|link|purge|menu]" ;;
+  *) die "Arahan: $0 [install|add|delete|list|link|purge|collect|rebuild|menu]" ;;
 esac
